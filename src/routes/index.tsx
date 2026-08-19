@@ -40,7 +40,10 @@ function shape(level: number) {
   const maxTrail = ramp(level, 4, [[10, 2.8], [40, 0.45], [35, 0.28], [35, 0.15]]) // ~32 @10, ~50 @50, ~60 @85, ~65 @120
   // Floor on the aimed-for trail length; climbs with level so longer, twistier
   // trails become the norm (see tryPlace for how short results actually get avoided).
-  const minTrail = clamp(2 + Math.floor(level / 8), 2, maxTrail - 1)
+  // 3 rather than 2: every placed arrow needs a free back-cell anyway (length >= 2 is
+  // structural, see tryPlace), so starting the aim at 3 pushes past that bare minimum
+  // from level 1 on instead of only once minTrail climbs past it around level 8.
+  const minTrail = clamp(3 + Math.floor(level / 8), 3, maxTrail - 1)
   return { cols, rows, maxTrail, minTrail }
 }
 
@@ -158,27 +161,17 @@ function generate(level: number) {
 
   // Fill pass: cells no trail ever swept up (deferred above, or all neighbours
   // taken before they came up) get a real placement attempt — accepting even a
-  // bare 2-cell result this time — and a single-cell arrow as a last resort if
-  // no direction has a clear ray at all. Run only after the main loop finishes,
-  // for the same reason placements were deferred above.
+  // bare 2-cell result this time, since there's nothing left to defer for. A cell
+  // with no free back-cell in any direction (so not even a 2-cell arrow fits) is
+  // left empty rather than turned into a single-cell arrow — those read as the
+  // smallest, most trivial arrows on the board, more so than a short 2-cell one.
   for (const { r, c } of order) {
     if (occ.has(key(r, c))) continue
     const placed = tryPlace(r, c)
-    if (placed) {
-      const used = new Set(placed.cells.map((p) => key(p.r, p.c)))
-      for (const k of used) occ.add(k)
-      arrows.push({ id: id++, cells: placed.cells.slice().reverse(), dir: placed.dir, gone: false })
-      continue
-    }
-    for (const dir of shuffled(DIRS)) {
-      const [dr, dc] = DELTA[dir]
-      const forbid = clearRay(r, c, dr, dc)
-      if (forbid) {
-        occ.add(key(r, c))
-        arrows.push({ id: id++, cells: [{ r, c }], dir, gone: false })
-        break
-      }
-    }
+    if (!placed) continue
+    const used = new Set(placed.cells.map((p) => key(p.r, p.c)))
+    for (const k of used) occ.add(k)
+    arrows.push({ id: id++, cells: placed.cells.slice().reverse(), dir: placed.dir, gone: false })
   }
   return { arrows, cols, rows }
 }
