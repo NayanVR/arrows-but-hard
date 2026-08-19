@@ -33,11 +33,14 @@ function ramp(level: number, base: number, segs: [number, number][]) {
   return Math.floor(v)
 }
 function shape(level: number) {
-  // 1-10 (brutal ramp, board is already huge by level 10) -> 10-50 (steep) -> 50-85 (moderate) -> 85-120 (gentle)
-  const cols = ramp(level, 6, [[10, 2.2], [40, 0.35], [35, 0.18], [35, 0.08]]) // ~28 @10, ~42 @50, ~48 @85, ~51 @120
-  const rows = ramp(level, 7, [[10, 2.8], [40, 0.45], [35, 0.22], [35, 0.1]]) // ~35 @10, ~53 @50, ~61 @85, ~64 @120
-  const maxTrail = ramp(level, 4, [[10, 1.5], [40, 0.3], [35, 0.15], [35, 0.07]]) // ~19 @10, ~31 @50, ~36 @85, ~39 @120
-  return { cols, rows, maxTrail }
+  // 1-10 (ferocious ramp: level 10 lands around where level 60 used to sit) ->
+  // 10-50 (steep) -> 50-85 (moderate) -> 85-120 (gentle, but still climbing)
+  const cols = ramp(level, 6, [[10, 3.7], [40, 0.6], [35, 0.35], [35, 0.2]]) // ~43 @10, ~67 @50, ~79 @85, ~86 @120
+  const rows = ramp(level, 7, [[10, 4.8], [40, 0.75], [35, 0.45], [35, 0.25]]) // ~55 @10, ~85 @50, ~101 @85, ~109 @120
+  const maxTrail = ramp(level, 4, [[10, 2.8], [40, 0.45], [35, 0.28], [35, 0.15]]) // ~32 @10, ~50 @50, ~60 @85, ~65 @120
+  // Floor on trail length so short, obviously-aimed 2-cell arrows get rarer as levels climb.
+  const minTrail = clamp(2 + Math.floor(level / 8), 2, maxTrail - 1)
+  return { cols, rows, maxTrail, minTrail }
 }
 
 // Center-first reverse placement. Each cell, from the board centre outward, seeds
@@ -45,8 +48,17 @@ function shape(level: number) {
 // the trail never enters that ray. Placing centre cells first (they're removed
 // last, exiting through paths later removals clear) packs the board densely, and
 // removing in reverse placement order is always valid — so every board is solvable.
+function shuffled<T>(arr: T[]) {
+  const a = arr.slice()
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = rand(i + 1)
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 function generate(level: number) {
-  const { cols, rows, maxTrail } = shape(level)
+  const { cols, rows, maxTrail, minTrail } = shape(level)
   const inb = (r: number, c: number) => r >= 0 && r < rows && c >= 0 && c < cols
   const occ = new Set<string>()
   const arrows: Arrow[] = []
@@ -74,17 +86,9 @@ function generate(level: number) {
 
   for (const { r, c } of order) {
     if (occ.has(key(r, c))) continue
-    // Prefer pointing toward the nearest edge (shortest, most-likely-clear ray).
-    const dirs = (
-      [
-        ['up', r],
-        ['down', rows - 1 - r],
-        ['left', c],
-        ['right', cols - 1 - c],
-      ] as [Dir, number][]
-    )
-      .sort((a, b) => a[1] - b[1])
-      .map((x) => x[0])
+    // Direction order is shuffled rather than nearest-edge-first: an arrow's exit
+    // isn't always the closest wall, so its escape isn't obvious at a glance.
+    const dirs = shuffled(DIRS)
     let chosen: { dir: Dir; forbid: Set<string>; back: Pt } | null = null
     for (const dir of dirs) {
       const [dr, dc] = DELTA[dir]
@@ -98,30 +102,74 @@ function generate(level: number) {
         break
       }
     }
-    if (!chosen) continue // can't host an aligned length-2 arrow here; leave for a neighbour or empty
+    if (!chosen) continue // can't host an aligned length-2 arrow here; leave for a neighbour or the fill pass
 
     const { dir, forbid, back } = chosen
     const [dr, dc] = DELTA[dir]
+    const target = minTrail + rand(maxTrail - minTrail + 1)
+
+    // Grow the tail as a backtracking walk: dead ends pop back to the last
+    // branch point and try another neighbour instead of giving up on the spot.
+    // A plain greedy walk stalls constantly in a densely packed board, which
+    // was quietly producing a flood of short, easy-to-read arrows; tracking
+    // the longest path seen (`best`) means a walk that never hits `target`
+    // still keeps whatever progress it made instead of unwinding to nothing.
     const cells: Pt[] = [{ r, c }, back]
     const used = new Set([key(r, c), key(back.r, back.c)])
-    let cur: Pt = back
-    let head: [number, number] = [-dr, -dc] // heading of the growing tail (starts opposite the arrow)
-    const target = 2 + rand(maxTrail - 1)
-    while (cells.length < target) {
-      const nbrs = DIRS.map((d) => ({ dd: DELTA[d], r: cur.r + DELTA[d][0], c: cur.c + DELTA[d][1] })).filter(
-        (n) => inb(n.r, n.c) && !occ.has(key(n.r, n.c)) && !used.has(key(n.r, n.c)) && !forbid.has(key(n.r, n.c)),
+    let best = cells.slice()
+    type Frame = { cell: Pt; heading: [number, number]; tried: Set<string> }
+    const stack: Frame[] = [{ cell: back, heading: [-dr, -dc], tried: new Set() }]
+    let guard = 0
+    while (cells.length < target && stack.length && guard++ < target * 40 + 200) {
+      const top = stack[stack.length - 1]
+      const nbrs = DIRS.map((d) => ({ dd: DELTA[d], r: top.cell.r + DELTA[d][0], c: top.cell.c + DELTA[d][1] })).filter(
+        (n) =>
+          inb(n.r, n.c) &&
+          !occ.has(key(n.r, n.c)) &&
+          !used.has(key(n.r, n.c)) &&
+          !forbid.has(key(n.r, n.c)) &&
+          !top.tried.has(key(n.r, n.c)),
       )
-      if (!nbrs.length) break
+      if (!nbrs.length) {
+        stack.pop()
+        if (stack.length) {
+          used.delete(key(top.cell.r, top.cell.c))
+          cells.pop()
+          stack[stack.length - 1].tried.add(key(top.cell.r, top.cell.c))
+        }
+        continue
+      }
       // Prefer continuing straight so trails read cleanly and pack tightly.
-      const straight = nbrs.filter((n) => n.dd[0] === head[0] && n.dd[1] === head[1])
+      const straight = nbrs.filter((n) => n.dd[0] === top.heading[0] && n.dd[1] === top.heading[1])
       const n = straight.length && Math.random() < 0.6 ? straight[0] : nbrs[rand(nbrs.length)]
+      top.tried.add(key(n.r, n.c))
       cells.push({ r: n.r, c: n.c })
       used.add(key(n.r, n.c))
-      head = [n.dd[0], n.dd[1]]
-      cur = { r: n.r, c: n.c }
+      if (cells.length > best.length) best = cells.slice()
+      stack.push({ cell: { r: n.r, c: n.c }, heading: [n.dd[0], n.dd[1]], tried: new Set() })
     }
-    for (const k of used) occ.add(k)
-    arrows.push({ id: id++, cells: cells.slice().reverse(), dir, gone: false })
+    const finalCells = cells.length >= best.length ? cells : best
+    const finalUsed = new Set(finalCells.map((p) => key(p.r, p.c)))
+    for (const k of finalUsed) occ.add(k)
+    arrows.push({ id: id++, cells: finalCells.slice().reverse(), dir, gone: false })
+  }
+
+  // Fill pass: cells no trail ever swept up (all neighbours taken before they came
+  // up) still get a single-cell arrow if some direction is clear. Run only after
+  // the main loop finishes — placing these immediately, cell by cell, would starve
+  // neighbouring trails of room to grow through them, turning otherwise-long trails
+  // into a cascade of trivial single-cell arrows instead.
+  for (const { r, c } of order) {
+    if (occ.has(key(r, c))) continue
+    for (const dir of shuffled(DIRS)) {
+      const [dr, dc] = DELTA[dir]
+      const forbid = clearRay(r, c, dr, dc)
+      if (forbid) {
+        occ.add(key(r, c))
+        arrows.push({ id: id++, cells: [{ r, c }], dir, gone: false })
+        break
+      }
+    }
   }
   return { arrows, cols, rows }
 }
