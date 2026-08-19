@@ -15,3 +15,38 @@ body {
   margin: 0;
 }
 
+@keyframes arrowShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-0.14px); }
+  40% { transform: translateX(0.14px); }
+  60% { transform: translateX(-0.14px); }
+  80% { transform: translateX(0.14px); }
+}
+.arrow-shake { animation: arrowShake 0.4s ease-in-out; }
+
+/* arrows fade in when a level loads */
+@keyframes arrowIn { from { opacity: 0; } to { opacity: 1; } }
+.arrow-in { animation: arrowIn 0.35s ease both; }
+
+/* desktop hover: thicken the arrow under the cursor */
+.arrow .arrow-body { transition: stroke-width 0.15s ease; }
+@media (hover: hover) {
+  .arrow:hover .arrow-body { stroke-width: 0.18; }
+}
+
+/* overlays / dialogs pop in */
+@keyframes popIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
+.pop-in { animation: popIn 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.35); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fadeIn 0.2s ease both; }
+
+/* a heart jiggles when lost */
+@keyframes heartPop { 0% { transform: scale(1); } 40% { transform: scale(1.6) rotate(-8deg); } 100% { transform: scale(1); } }
+.heart-pop { animation: heartPop 0.45s ease; }
+
+/* gentle bob for the hint */
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.float-y { animation: floatY 1.8s ease-in-out infinite; }
+
+button { -webkit-tap-highlight-color: transparent; }
+
