@@ -50,3 +50,18 @@ body {
 
 button { -webkit-tap-highlight-color: transparent; }
 
+/* confetti burst on win */
+@keyframes confettiFall {
+  0% { transform: translateY(-12vh) rotate(0deg); opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translateY(108vh) rotate(720deg); opacity: 0; }
+}
+.confetti {
+  position: absolute;
+  top: 0;
+  border-radius: 1px;
+  animation-name: confettiFall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+

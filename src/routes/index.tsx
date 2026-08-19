@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export const Route = createFileRoute('/')({ component: Home })
 
@@ -20,17 +20,23 @@ const key = (r: number, c: number) => r + ',' + c
 
 const LEVEL_COUNT = 120
 
-// Piecewise growth: steep 1->60, moderate 60->90, gentle 90->120.
-function ramp(level: number, base: number, r1: number, r2: number, r3: number) {
-  const s1 = Math.min(level, 60) // levels 1..60
-  const s2 = Math.min(Math.max(level - 60, 0), 30) // 60..90
-  const s3 = Math.max(level - 90, 0) // 90..120
-  return Math.floor(base + s1 * r1 + s2 * r2 + s3 * r3)
+// Piecewise growth. Segments (length, rate): fastest for 1-20, then easing off.
+function ramp(level: number, base: number, segs: [number, number][]) {
+  let v = base
+  let n = level
+  for (const [len, rate] of segs) {
+    const used = Math.min(n, len)
+    v += used * rate
+    n -= used
+    if (n <= 0) break
+  }
+  return Math.floor(v)
 }
 function shape(level: number) {
-  const cols = ramp(level, 5, 0.35, 0.13, 0.07) // ~26 @60, ~30 @90, ~32 @120
-  const rows = ramp(level, 6, 0.47, 0.2, 0.13) // ~34 @60, ~40 @90, ~44 @120
-  const maxTrail = ramp(level, 4, 0.23, 0.13, 0.07) // longer, twistier trails higher up
+  // 1-20 (steepest) -> 20-60 (steep) -> 60-90 (moderate) -> 90-120 (gentle)
+  const cols = ramp(level, 6, [[20, 0.4], [40, 0.3], [30, 0.13], [30, 0.07]]) // ~14 @20, ~26 @60, ~30 @90, ~32 @120
+  const rows = ramp(level, 7, [[20, 0.55], [40, 0.4], [30, 0.2], [30, 0.13]]) // ~18 @20, ~34 @60, ~40 @90, ~44 @120
+  const maxTrail = ramp(level, 4, [[20, 0.4], [40, 0.2], [30, 0.13], [30, 0.07]]) // longer, twistier trails higher up
   return { cols, rows, maxTrail }
 }
 
@@ -146,6 +152,39 @@ const CloseIcon = () => (
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 )
+const CONFETTI_COLORS = ['#ef4444', '#3b82f6', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899']
+function Confetti() {
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: 70 }, (_, i) => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 0.4,
+        dur: 1.8 + Math.random() * 1.6,
+        w: 6 + Math.random() * 7,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      })),
+    [],
+  )
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
+      {pieces.map((p, i) => (
+        <span
+          key={i}
+          className="confetti"
+          style={{
+            left: `${p.left}%`,
+            width: p.w,
+            height: p.w * 0.4,
+            background: p.color,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.dur}s`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 const LockIcon = () => (
   <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
     <rect x="4" y="11" width="16" height="10" rx="2" />
@@ -461,6 +500,8 @@ function Home() {
       {level === 1 && status === 'playing' && (
         <p className="float-y relative z-10 -mt-1 text-sm font-medium text-slate-400">Tap an arrow to slide it out ✦</p>
       )}
+
+      {status === 'won' && <Confetti />}
 
       <div className="relative z-10 mt-auto w-full bg-slate-50 pt-2 text-center text-3xl font-black tracking-tight text-slate-800">
         Arrows Escape
