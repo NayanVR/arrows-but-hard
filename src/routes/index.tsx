@@ -33,10 +33,10 @@ function ramp(level: number, base: number, segs: [number, number][]) {
   return Math.floor(v)
 }
 function shape(level: number) {
-  // 1-20 (steepest) -> 20-60 (steep) -> 60-90 (moderate) -> 90-120 (gentle)
-  const cols = ramp(level, 6, [[20, 0.4], [40, 0.3], [30, 0.13], [30, 0.07]]) // ~14 @20, ~26 @60, ~30 @90, ~32 @120
-  const rows = ramp(level, 7, [[20, 0.55], [40, 0.4], [30, 0.2], [30, 0.13]]) // ~18 @20, ~34 @60, ~40 @90, ~44 @120
-  const maxTrail = ramp(level, 4, [[20, 0.4], [40, 0.2], [30, 0.13], [30, 0.07]]) // longer, twistier trails higher up
+  // 1-10 (brutal ramp, board is already huge by level 10) -> 10-50 (steep) -> 50-85 (moderate) -> 85-120 (gentle)
+  const cols = ramp(level, 6, [[10, 2.2], [40, 0.35], [35, 0.18], [35, 0.08]]) // ~28 @10, ~42 @50, ~48 @85, ~51 @120
+  const rows = ramp(level, 7, [[10, 2.8], [40, 0.45], [35, 0.22], [35, 0.1]]) // ~35 @10, ~53 @50, ~61 @85, ~64 @120
+  const maxTrail = ramp(level, 4, [[10, 1.5], [40, 0.3], [35, 0.15], [35, 0.07]]) // ~19 @10, ~31 @50, ~36 @85, ~39 @120
   return { cols, rows, maxTrail }
 }
 
